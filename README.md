@@ -62,10 +62,12 @@ python tests/test_smoke.py
 ```
 PersonaCore/
 ├─ plan.md                      # 分阶段实施计划
+├─ docs/architecture.md         # 架构文档（架构图 + 详细设计）
 ├─ config/dimensions.yaml       # 大五维度、锚点、题库、权重/阈值
 ├─ personacore/
 │  ├─ main.py                   # CLI 入口
 │  ├─ orchestrator.py           # 编排器
+│  ├─ session.py                # 运行结果与报告渲染
 │  ├─ llm.py                    # OpenAI 兼容 LLM 客户端
 │  ├─ config.py                 # 配置加载
 │  └─ agents/
