@@ -15,7 +15,7 @@
   .login input { width:100%; padding:12px; border:1px solid #d5d9e0; border-radius:8px; font-size:15px; margin-bottom:10px; }
   button { padding:10px 18px; border:none; border-radius:8px; background:var(--primary); color:#fff; font-size:14px; cursor:pointer; }
   button.ghost { background:#eef1f6; color:var(--text); }
-  .toolbar { display:flex; gap:8px; margin-bottom:14px; justify-content:space-between; }
+  .toolbar { display:flex; gap:8px; margin-bottom:14px; justify-content:space-between; align-items:center; }
   table { width:100%; border-collapse:collapse; font-size:13px; }
   th,td { text-align:left; padding:10px 12px; border-bottom:1px solid #eef0f3; }
   th { color:var(--muted); font-weight:500; }
@@ -62,24 +62,7 @@
 <script>
 function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 
-async function login(){
-  const pwd=document.getElementById('pwd').value;
-  const res=await fetch('/admin/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pwd})});
-  if(!res.ok){document.getElementById('loginErr').textContent='密码错误';return;}
-  document.getElementById('login').style.display='none';
-  document.getElementById('dash').style.display='block';
-  load();
-}
-
-async function logout(){
-  await fetch('/admin/logout',{method:'POST'});
-  location.reload();
-}
-
-async function load(){
-  const res=await fetch('/admin/api/candidates');
-  if(res.status===401){location.reload();return;}
-  const list=await res.json();
+function render(list){
   const tbody=document.getElementById('tbody');
   const empty=document.getElementById('empty');
   tbody.innerHTML='';
@@ -96,6 +79,39 @@ async function load(){
   });
 }
 
+// 页面加载时只检查登录态，绝不自动刷新
+async function checkAuth(){
+  try{
+    const res=await fetch('/admin/api/candidates');
+    if(res.ok){
+      document.getElementById('login').style.display='none';
+      document.getElementById('dash').style.display='block';
+      render(await res.json());
+    }
+    // 401：保持登录框显示，不做跳转
+  }catch(e){/* 保持登录框 */}
+}
+
+async function login(){
+  const pwd=document.getElementById('pwd').value;
+  const res=await fetch('/admin/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pwd})});
+  if(!res.ok){document.getElementById('loginErr').textContent='密码错误';return;}
+  document.getElementById('login').style.display='none';
+  document.getElementById('dash').style.display='block';
+  load();
+}
+
+async function load(){
+  const res=await fetch('/admin/api/candidates');
+  if(res.status===401){ location.reload(); return; }
+  render(await res.json());
+}
+
+async function logout(){
+  try{ await fetch('/admin/logout',{method:'POST'}); }catch(e){}
+  location.reload();
+}
+
 async function view(id){
   const res=await fetch('/admin/api/candidates/'+id);
   const rec=await res.json();
@@ -105,7 +121,7 @@ async function view(id){
   rp.scrollIntoView({behavior:'smooth'});
 }
 
-load();
+checkAuth();
 </script>
 </body>
 </html>
