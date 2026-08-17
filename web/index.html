@@ -21,7 +21,14 @@
     flex-direction: column; align-items: center;
   }
   .container { width: 100%; max-width: 720px; height: 100%; display: flex; flex-direction: column; padding: 16px; gap: 12px; }
-  h1 { font-size: 18px; margin: 4px 0; text-align: center; }
+
+  /* 欢迎页 */
+  .welcome { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; text-align: center; }
+  .welcome h1 { font-size: 26px; margin: 0; }
+  .welcome .logo { font-size: 52px; }
+  .welcome .sub { color: var(--muted); font-size: 15px; margin: 0; max-width: 400px; line-height: 1.7; }
+
+  /* 聊天区 */
   .chat { flex: 1; overflow-y: auto; background: var(--card); border-radius: 12px; padding: 16px; box-shadow: 0 1px 4px rgba(0,0,0,.06); }
   .msg { margin-bottom: 14px; display: flex; flex-direction: column; }
   .msg .role { font-size: 12px; color: var(--muted); margin-bottom: 3px; }
@@ -30,26 +37,34 @@
   .msg.ai p { background: var(--ai); }
   .msg.me { align-items: flex-end; }
   .msg.me p { background: var(--me); color: #fff; }
-  .controls { display: flex; gap: 8px; align-items: center; }
-  .controls input { flex: 1; padding: 12px; border: 1px solid #d5d9e0; border-radius: 8px; font-size: 15px; }
-  button { padding: 11px 18px; border: none; border-radius: 8px; background: var(--primary); color: #fff; font-size: 15px; cursor: pointer; }
+
+  .input-row { display: flex; gap: 8px; }
+  .input-row input { flex: 1; padding: 12px; border: 1px solid #d5d9e0; border-radius: 8px; font-size: 15px; }
+  button { padding: 11px 22px; border: none; border-radius: 8px; background: var(--primary); color: #fff; font-size: 15px; cursor: pointer; }
   button:disabled { background: #b9c4e6; cursor: not-allowed; }
   .report { display: none; background: var(--card); border-radius: 12px; padding: 16px; overflow: auto; white-space: pre-wrap; font-size: 13px; line-height: 1.6; box-shadow: 0 1px 4px rgba(0,0,0,.06); }
-  .hint { text-align: center; color: var(--muted); font-size: 13px; }
 </style>
 </head>
 <body>
 <div class="container">
-  <h1>PersonaCore · 性格特质测评</h1>
-  <div id="chat" class="chat"><div class="hint">点击下方「开始面试」进入测评</div></div>
-  <div class="controls">
+  <!-- 欢迎页 -->
+  <div id="welcome" class="welcome">
+    <div class="logo">🧑‍💼</div>
+    <h1>PersonaCore · 性格特质测评</h1>
+    <p class="sub">基于大五人格（OCEAN）的多智能体面试测评，回答几个问题，即可生成你的性格特质报告。</p>
     <button id="startBtn" onclick="start()">开始面试</button>
-    <div id="inputRow" style="display:none; flex:1; gap:8px;">
-      <input id="msgInput" placeholder="输入你的回答，回车发送…">
-      <button id="sendBtn" onclick="send()">发送</button>
-    </div>
-    <button id="reportBtn" style="display:none;" onclick="showReport()">查看报告</button>
   </div>
+
+  <!-- 聊天区 -->
+  <div id="chat" class="chat" style="display:none"></div>
+
+  <!-- 输入 -->
+  <div id="inputRow" class="input-row" style="display:none">
+    <input id="msgInput" placeholder="输入你的回答，回车发送…">
+    <button id="sendBtn" onclick="send()">发送</button>
+  </div>
+
+  <button id="reportBtn" style="display:none" onclick="showReport()">查看报告</button>
   <div id="report" class="report"></div>
 </div>
 
@@ -61,8 +76,6 @@ function esc(s) {
 }
 function addMsg(role, text) {
   const chat = document.getElementById('chat');
-  const hint = chat.querySelector('.hint');
-  if (hint) hint.remove();
   const div = document.createElement('div');
   div.className = 'msg ' + (role === '候选人' ? 'me' : 'ai');
   div.innerHTML = '<span class="role">' + esc(role) + '</span><p>' + esc(text) + '</p>';
@@ -78,9 +91,10 @@ async function start() {
     if (!res.ok) throw new Error(await res.text());
     const data = await res.json();
     sessionId = data.session_id;
-    data.messages.forEach(m => addMsg('面试官', m));
-    btn.style.display = 'none';
+    document.getElementById('welcome').style.display = 'none';
+    document.getElementById('chat').style.display = 'block';
     document.getElementById('inputRow').style.display = 'flex';
+    data.messages.forEach(m => addMsg('面试官', m));
     document.getElementById('msgInput').focus();
   } catch (e) {
     alert('启动失败：' + e.message);
