@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PersonaCore 性格测评</title>
+<style>
+  :root {
+    --bg: #f5f6f8;
+    --card: #ffffff;
+    --primary: #3b6ef5;
+    --ai: #eef1f6;
+    --me: #3b6ef5;
+    --text: #1f2329;
+    --muted: #8a919c;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: var(--bg); color: var(--text); height: 100vh; display: flex;
+    flex-direction: column; align-items: center;
+  }
+  .container { width: 100%; max-width: 720px; height: 100%; display: flex; flex-direction: column; padding: 16px; gap: 12px; }
+  h1 { font-size: 18px; margin: 4px 0; text-align: center; }
+  .chat { flex: 1; overflow-y: auto; background: var(--card); border-radius: 12px; padding: 16px; box-shadow: 0 1px 4px rgba(0,0,0,.06); }
+  .msg { margin-bottom: 14px; display: flex; flex-direction: column; }
+  .msg .role { font-size: 12px; color: var(--muted); margin-bottom: 3px; }
+  .msg p { margin: 0; padding: 10px 12px; border-radius: 10px; line-height: 1.6; white-space: pre-wrap; word-break: break-word; max-width: 85%; }
+  .msg.ai { align-items: flex-start; }
+  .msg.ai p { background: var(--ai); }
+  .msg.me { align-items: flex-end; }
+  .msg.me p { background: var(--me); color: #fff; }
+  .controls { display: flex; gap: 8px; align-items: center; }
+  .controls input { flex: 1; padding: 12px; border: 1px solid #d5d9e0; border-radius: 8px; font-size: 15px; }
+  button { padding: 11px 18px; border: none; border-radius: 8px; background: var(--primary); color: #fff; font-size: 15px; cursor: pointer; }
+  button:disabled { background: #b9c4e6; cursor: not-allowed; }
+  .report { display: none; background: var(--card); border-radius: 12px; padding: 16px; overflow: auto; white-space: pre-wrap; font-size: 13px; line-height: 1.6; box-shadow: 0 1px 4px rgba(0,0,0,.06); }
+  .hint { text-align: center; color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>PersonaCore · 性格特质测评</h1>
+  <div id="chat" class="chat"><div class="hint">点击下方「开始面试」进入测评</div></div>
+  <div class="controls">
+    <button id="startBtn" onclick="start()">开始面试</button>
+    <div id="inputRow" style="display:none; flex:1; gap:8px;">
+      <input id="msgInput" placeholder="输入你的回答，回车发送…">
+      <button id="sendBtn" onclick="send()">发送</button>
+    </div>
+    <button id="reportBtn" style="display:none;" onclick="showReport()">查看报告</button>
+  </div>
+  <div id="report" class="report"></div>
+</div>
+
+<script>
+let sessionId = null;
+
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function addMsg(role, text) {
+  const chat = document.getElementById('chat');
+  const hint = chat.querySelector('.hint');
+  if (hint) hint.remove();
+  const div = document.createElement('div');
+  div.className = 'msg ' + (role === '候选人' ? 'me' : 'ai');
+  div.innerHTML = '<span class="role">' + esc(role) + '</span><p>' + esc(text) + '</p>';
+  chat.appendChild(div);
+  chat.scrollTop = chat.scrollHeight;
+}
+
+async function start() {
+  const btn = document.getElementById('startBtn');
+  btn.disabled = true;
+  try {
+    const res = await fetch('/interview/start', { method: 'POST' });
+    if (!res.ok) throw new Error(await res.text());
+    const data = await res.json();
+    sessionId = data.session_id;
+    data.messages.forEach(m => addMsg('面试官', m));
+    btn.style.display = 'none';
+    document.getElementById('inputRow').style.display = 'flex';
+    document.getElementById('msgInput').focus();
+  } catch (e) {
+    alert('启动失败：' + e.message);
+    btn.disabled = false;
+  }
+}
+
+async function send() {
+  const input = document.getElementById('msgInput');
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = '';
+  addMsg('候选人', text);
+  const btn = document.getElementById('sendBtn');
+  btn.disabled = true;
+  try {
+    const res = await fetch('/interview/' + sessionId + '/message', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: text })
+    });
+    if (!res.ok) throw new Error(await res.text());
+    const data = await res.json();
+    addMsg('面试官', data.message);
+    if (data.finished) {
+      document.getElementById('inputRow').style.display = 'none';
+      document.getElementById('reportBtn').style.display = 'inline-block';
+      addMsg('系统', '面试已结束，点击「查看报告」生成你的测评报告。');
+    }
+  } catch (e) {
+    addMsg('系统', '出错了：' + e.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function showReport() {
+  const btn = document.getElementById('reportBtn');
+  btn.disabled = true;
+  btn.textContent = '生成中…';
+  try {
+    const res = await fetch('/interview/' + sessionId + '/report');
+    if (!res.ok) throw new Error(await res.text());
+    const data = await res.json();
+    const report = document.getElementById('report');
+    report.textContent = data.markdown;
+    report.style.display = 'block';
+    btn.style.display = 'none';
+  } catch (e) {
+    addMsg('系统', '生成报告失败：' + e.message);
+    btn.disabled = false;
+    btn.textContent = '查看报告';
+  }
+}
+
+document.getElementById('msgInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') send();
+});
+</script>
+</body>
+</html>

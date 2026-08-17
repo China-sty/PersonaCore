@@ -67,13 +67,17 @@ flowchart TB
     CLI --> OUT
 ```
 
+> 接入层现有两种入口：**CLI**（`main.py`）与 **Web**（`web.py`），二者都驱动同一个 `InterviewEngine` 状态机（`engine.py`），面试核心逻辑无 I/O、可复用。
+
 ### 2.1 目录结构
 
 ```
 PersonaCore/
 ├─ personacore/
 │  ├─ main.py               # CLI 入口
-│  ├─ orchestrator.py       # 编排器（流程核心）
+│  ├─ web.py                # FastAPI Web 入口
+│  ├─ engine.py             # 面试状态机（CLI/Web 共用，无 I/O）
+│  ├─ orchestrator.py       # CLI 编排（驱动 engine）
 │  ├─ session.py            # RunResult：运行结果与报告渲染
 │  ├─ llm.py                # LLM 客户端（OpenAI 兼容 + JSON 提取）
 │  ├─ config.py             # 配置加载（维度/权重/阈值）
@@ -83,8 +87,11 @@ PersonaCore/
 │     ├─ arbiter.py         # 裁决 Agent
 │     ├─ report.py          # 报告 Agent
 │     └─ _util.py           # 共享工具
+├─ web/index.html           # Web 前端（聊天界面）
+├─ deploy/                  # systemd / nginx / deploy.sh
 ├─ config/dimensions.yaml   # 大五维度、锚点、题库、权重
-├─ tests/test_smoke.py      # 端到端冒烟测试（假 LLM）
+├─ tests/test_smoke.py      # CLI 端到端冒烟测试（假 LLM）
+├─ tests/test_web.py        # Web 冒烟测试
 ├─ docs/architecture.md     # 本文档
 └─ plan.md                  # 分阶段实施计划
 ```

@@ -11,6 +11,7 @@
 - **管理员可配置**：各维度权重、合格线、一票否决、行为锚点、题库（见 `config/dimensions.yaml`）。
 - **证据可回溯**：每个评分都要求模型引用原文证据，无证据则降低置信度。
 - **LLM 可插拔**：OpenAI 兼容接口，可接 OpenAI / DeepSeek / 通义千问 / 智谱等。
+- **CLI + Web 双入口**：命令行交互 + 浏览器在线测评（FastAPI + 简单前端）。
 
 ## 快速开始
 
@@ -51,7 +52,21 @@ python -m personacore.main
 python -m personacore.main --out-dir my_reports
 ```
 
-### 4. 冒烟测试（无需 API Key）
+### 4. Web 模式（在线访问）
+
+```bash
+python -m uvicorn personacore.web:app --host 0.0.0.0 --port 8000
+```
+
+浏览器打开 `http://localhost:8000`，即可聊天式进行面试。
+
+```
+POST /interview/start            开始面试
+POST /interview/{sid}/message    提交回答
+GET  /interview/{sid}/report     获取报告
+```
+
+### 5. 冒烟测试（无需 API Key）
 
 ```bash
 python tests/test_smoke.py
@@ -66,7 +81,9 @@ PersonaCore/
 ├─ config/dimensions.yaml       # 大五维度、锚点、题库、权重/阈值
 ├─ personacore/
 │  ├─ main.py                   # CLI 入口
-│  ├─ orchestrator.py           # 编排器
+│  ├─ web.py                    # FastAPI Web 入口
+│  ├─ engine.py                 # 面试状态机（CLI/Web 共用）
+│  ├─ orchestrator.py           # CLI 编排（驱动 engine）
 │  ├─ session.py                # 运行结果与报告渲染
 │  ├─ llm.py                    # OpenAI 兼容 LLM 客户端
 │  ├─ config.py                 # 配置加载
@@ -76,8 +93,29 @@ PersonaCore/
 │     ├─ arbiter.py             # 裁决 Agent
 │     ├─ report.py              # 报告 Agent
 │     └─ _util.py
-└─ tests/test_smoke.py          # 端到端冒烟测试
+├─ web/index.html               # Web 前端（聊天界面）
+├─ deploy/                      # 部署：systemd / nginx / deploy.sh
+└─ tests/
+   ├─ test_smoke.py             # CLI 冒烟测试
+   └─ test_web.py               # Web 冒烟测试
 ```
+
+## 部署到服务器（阿里云 ECS）
+
+Web 化后可用一键脚本部署（Ubuntu/Debian）：
+
+```bash
+sudo bash deploy/deploy.sh
+```
+
+脚本会自动：装系统依赖 → 拉代码 → 建 venv 装依赖 → 配 systemd → 配 nginx。
+
+- 首次会提示你先编辑 `/opt/personacore/.env` 填入密钥，填完重跑脚本即可。
+- 完成后浏览器访问 `http://<你的公网IP>`。
+- 服务管理：`systemctl status personacore`；日志：`journalctl -u personacore -f`。
+- 配置文件：`deploy/personacore.service`（systemd）、`deploy/nginx.conf`（反向代理）。
+
+> 注意：会话目前存内存，重启进程会清空；报告生成（多智能体分析）约需数十秒。
 
 ## 说明
 
