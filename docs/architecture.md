@@ -79,6 +79,7 @@ PersonaCore/
 │  ├─ engine.py             # 面试状态机（CLI/Web 共用，无 I/O）
 │  ├─ orchestrator.py       # CLI 编排（驱动 engine）
 │  ├─ session.py            # RunResult：运行结果与报告渲染
+│  ├─ store.py              # SQLite 持久化（面试结果落库）
 │  ├─ llm.py                # LLM 客户端（OpenAI 兼容 + JSON 提取）
 │  ├─ config.py             # 配置加载（维度/权重/阈值）
 │  └─ agents/
@@ -88,10 +89,13 @@ PersonaCore/
 │     ├─ report.py          # 报告 Agent
 │     └─ _util.py           # 共享工具
 ├─ web/index.html           # Web 前端（聊天界面）
+├─ web/admin.html           # 管理员面板前端
+├─ data/personacore.db      # SQLite 数据库（运行时生成，gitignore）
 ├─ deploy/                  # systemd / nginx / deploy.sh
 ├─ config/dimensions.yaml   # 大五维度、锚点、题库、权重
 ├─ tests/test_smoke.py      # CLI 端到端冒烟测试（假 LLM）
 ├─ tests/test_web.py        # Web 冒烟测试
+├─ tests/test_admin.py      # 管理面板冒烟测试
 ├─ docs/architecture.md     # 本文档
 └─ plan.md                  # 分阶段实施计划
 ```
@@ -322,6 +326,11 @@ defaults:
 - 每次运行生成唯一 `run_id`（时间戳到毫秒），报告**互不覆盖**。
 - `.md` 给人读（含完整面试记录），`.json` 给程序读（入库/批量分析）。
 - 冒烟测试 `tests/test_smoke.py` 用假 LLM 跑通闭环，无需密钥即可回归。
+
+### 8.1 持久化与管理面板
+
+- **SQLite 落库**：Web 面试结束后，`Store`（`store.py`）把结果（transcript、各维度分、composite、decision、报告）写入 `data/personacore.db`，重启不丢。
+- **管理面板** `/admin`：密码登录（`ADMIN_PASSWORD`）→ 候选人列表（综合分/结论/各维度分）→ 查看完整报告。
 
 ---
 

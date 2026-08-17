@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PersonaCore 管理面板</title>
+<style>
+  :root { --bg:#f5f6f8; --card:#fff; --primary:#3b6ef5; --text:#1f2329; --muted:#8a919c; --pass:#1a9c5b; --fail:#d64545; --pending:#d98a1f; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif; background:var(--bg); color:var(--text); }
+  .wrap { max-width:960px; margin:0 auto; padding:24px 16px; }
+  h1 { font-size:20px; margin:0 0 16px; }
+  .card { background:var(--card); border-radius:12px; padding:20px; box-shadow:0 1px 4px rgba(0,0,0,.06); }
+  .login { max-width:360px; margin:10vh auto; }
+  .login input { width:100%; padding:12px; border:1px solid #d5d9e0; border-radius:8px; font-size:15px; margin-bottom:10px; }
+  button { padding:10px 18px; border:none; border-radius:8px; background:var(--primary); color:#fff; font-size:14px; cursor:pointer; }
+  button.ghost { background:#eef1f6; color:var(--text); }
+  .toolbar { display:flex; gap:8px; margin-bottom:14px; justify-content:space-between; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th,td { text-align:left; padding:10px 12px; border-bottom:1px solid #eef0f3; }
+  th { color:var(--muted); font-weight:500; }
+  tr.row { cursor:pointer; }
+  tr.row:hover { background:#f7f9fc; }
+  .tag { display:inline-block; padding:2px 10px; border-radius:20px; font-size:12px; color:#fff; }
+  .tag.pass { background:var(--pass); } .tag.fail { background:var(--fail); } .tag.pending { background:var(--pending); }
+  .dim { color:var(--muted); font-size:12px; }
+  pre { white-space:pre-wrap; word-break:break-word; font-size:13px; line-height:1.6; background:#fafbfc; border-radius:8px; padding:16px; margin:16px 0 0; }
+  .err { color:var(--fail); font-size:13px; margin-top:8px; }
+  .hint { color:var(--muted); text-align:center; padding:40px 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <!-- 登录 -->
+  <div id="login" class="card login">
+    <h1>PersonaCore 管理面板</h1>
+    <input type="password" id="pwd" placeholder="管理员密码" onkeydown="if(event.key==='Enter')login()">
+    <button onclick="login()">登录</button>
+    <div id="loginErr" class="err"></div>
+  </div>
+
+  <!-- 面板 -->
+  <div id="dash" style="display:none">
+    <div class="toolbar">
+      <h1>候选人列表</h1>
+      <div>
+        <button class="ghost" onclick="load()">刷新</button>
+        <button onclick="logout()">退出</button>
+      </div>
+    </div>
+    <div class="card">
+      <table>
+        <thead><tr><th>#</th><th>时间</th><th>综合分</th><th>结论</th><th>各维度</th></tr></thead>
+        <tbody id="tbody"></tbody>
+      </table>
+      <div id="empty" class="hint">暂无面试记录</div>
+    </div>
+    <pre id="report" style="display:none"></pre>
+  </div>
+</div>
+
+<script>
+function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+
+async function login(){
+  const pwd=document.getElementById('pwd').value;
+  const res=await fetch('/admin/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pwd})});
+  if(!res.ok){document.getElementById('loginErr').textContent='密码错误';return;}
+  document.getElementById('login').style.display='none';
+  document.getElementById('dash').style.display='block';
+  load();
+}
+
+async function logout(){
+  await fetch('/admin/logout',{method:'POST'});
+  location.reload();
+}
+
+async function load(){
+  const res=await fetch('/admin/api/candidates');
+  if(res.status===401){location.reload();return;}
+  const list=await res.json();
+  const tbody=document.getElementById('tbody');
+  const empty=document.getElementById('empty');
+  tbody.innerHTML='';
+  empty.style.display=list.length?'none':'block';
+  list.forEach(c=>{
+    const tr=document.createElement('tr');
+    tr.className='row';
+    const tag=c.decision==='通过'?'pass':(c.decision==='淘汰'?'fail':'pending');
+    const dims=(c.dimensions||[]).map(d=>`${d.name} ${d.score}${d.passed?'':'✗'}`).join(' · ');
+    tr.innerHTML=`<td>${c.id}</td><td>${esc(c.started_at||'')}</td><td>${c.composite!=null?c.composite.toFixed(2):'-'}</td>`+
+      `<td><span class="tag ${tag}">${esc(c.decision)}</span></td><td class="dim">${esc(dims)}</td>`;
+    tr.onclick=()=>view(c.id);
+    tbody.appendChild(tr);
+  });
+}
+
+async function view(id){
+  const res=await fetch('/admin/api/candidates/'+id);
+  const rec=await res.json();
+  const rp=document.getElementById('report');
+  rp.textContent=rec.report_md||'（无报告）';
+  rp.style.display='block';
+  rp.scrollIntoView({behavior:'smooth'});
+}
+
+load();
+</script>
+</body>
+</html>

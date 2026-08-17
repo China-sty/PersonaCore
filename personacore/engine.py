@@ -1,6 +1,7 @@
 """面试状态机：无 I/O 的面试核心，供 CLI 与 Web 层复用。"""
 from __future__ import annotations
 
+import threading
 from typing import Dict, List
 
 from .agents.analyst import Analyst
@@ -27,6 +28,7 @@ class InterviewEngine:
         self._probes = 0
         self.finished = False
         self._result: RunResult | None = None
+        self._finalize_lock = threading.Lock()
 
     def start(self) -> List[str]:
         """返回 [开场白, 第一个问题]。"""
@@ -65,23 +67,24 @@ class InterviewEngine:
         return self.interviewer.closing()
 
     def finalize(self) -> RunResult:
-        """运行分析 + 裁决，返回 RunResult（可重复调用，结果缓存）。"""
-        if self._result is not None:
-            return self._result
-        results = [
-            self.analyst.analyze(
-                dim, self.transcripts[dim.key], self.config.scale_min, self.config.scale_max
+        """运行分析 + 裁决，返回 RunResult（可重复调用，结果缓存，线程安全）。"""
+        with self._finalize_lock:
+            if self._result is not None:
+                return self._result
+            results = [
+                self.analyst.analyze(
+                    dim, self.transcripts[dim.key], self.config.scale_min, self.config.scale_max
+                )
+                for dim in self.dims
+            ]
+            arb = self.arbiter.arbitrate(results, self.config)
+            self._result = RunResult(
+                run_id=make_run_id(),
+                started_at=make_timestamp(),
+                model=self.llm.model,
+                config=self.config,
+                transcripts=self.transcripts,
+                dimension_results=results,
+                arbiter=arb,
             )
-            for dim in self.dims
-        ]
-        arb = self.arbiter.arbitrate(results, self.config)
-        self._result = RunResult(
-            run_id=make_run_id(),
-            started_at=make_timestamp(),
-            model=self.llm.model,
-            config=self.config,
-            transcripts=self.transcripts,
-            dimension_results=results,
-            arbiter=arb,
-        )
-        return self._result
+            return self._result

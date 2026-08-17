@@ -12,6 +12,7 @@
 - **证据可回溯**：每个评分都要求模型引用原文证据，无证据则降低置信度。
 - **LLM 可插拔**：OpenAI 兼容接口，可接 OpenAI / DeepSeek / 通义千问 / 智谱等。
 - **CLI + Web 双入口**：命令行交互 + 浏览器在线测评（FastAPI + 简单前端）。
+- **数据持久化 + 管理面板**：SQLite 自动落库，`/admin` 查看候选人列表、分数与报告。
 
 ## 快速开始
 
@@ -72,6 +73,19 @@ GET  /interview/{sid}/report     获取报告
 python tests/test_smoke.py
 ```
 
+## 管理员面板
+
+面试结束后，结果会**自动落库到 SQLite**（`data/personacore.db`），管理员可随时查看。
+
+- 访问 `http://<域名或IP>/admin`
+- 登录密码在 `.env` 配：`ADMIN_PASSWORD=你的密码`（默认 `admin123`，**务必修改**）
+- 功能：候选人列表（综合分 / 结论 / 各维度分）→ 点进去看完整报告
+
+```bash
+# .env 增加一行
+ADMIN_PASSWORD=你的强密码
+```
+
 ## 目录结构
 
 ```
@@ -85,6 +99,7 @@ PersonaCore/
 │  ├─ engine.py                 # 面试状态机（CLI/Web 共用）
 │  ├─ orchestrator.py           # CLI 编排（驱动 engine）
 │  ├─ session.py                # 运行结果与报告渲染
+│  ├─ store.py                  # SQLite 持久化
 │  ├─ llm.py                    # OpenAI 兼容 LLM 客户端
 │  ├─ config.py                 # 配置加载
 │  └─ agents/
@@ -94,10 +109,13 @@ PersonaCore/
 │     ├─ report.py              # 报告 Agent
 │     └─ _util.py
 ├─ web/index.html               # Web 前端（聊天界面）
+├─ web/admin.html               # 管理员面板前端
+├─ data/                        # SQLite 数据库（gitignore）
 ├─ deploy/                      # 部署：systemd / nginx / deploy.sh
 └─ tests/
    ├─ test_smoke.py             # CLI 冒烟测试
-   └─ test_web.py               # Web 冒烟测试
+   ├─ test_web.py               # Web 冒烟测试
+   └─ test_admin.py             # 管理面板冒烟测试
 ```
 
 ## 部署到服务器（阿里云 ECS）
