@@ -13,8 +13,34 @@ from typing import Any, Dict, List
 from openai import OpenAI
 
 
+def _balanced_end(text: str, start: int, opener: str, closer: str) -> int:
+    """从 start 开始找与 opener 匹配的 closer 位置（尊重字符串与转义）。"""
+    depth = 0
+    in_str = False
+    escape = False
+    for i in range(start, len(text)):
+        ch = text[i]
+        if in_str:
+            if escape:
+                escape = False
+            elif ch == "\\":
+                escape = True
+            elif ch == '"':
+                in_str = False
+        else:
+            if ch == '"':
+                in_str = True
+            elif ch == opener:
+                depth += 1
+            elif ch == closer:
+                depth -= 1
+                if depth == 0:
+                    return i
+    return -1
+
+
 def extract_json(text: str) -> Any:
-    """从模型输出中稳健地提取 JSON 对象/数组。"""
+    """从模型输出中稳健地提取 JSON 对象/数组（容错：代码块、尾随文本、尾随逗号）。"""
     text = text.strip()
     if not text:
         raise ValueError("模型返回了空内容")
@@ -24,18 +50,23 @@ def extract_json(text: str) -> Any:
     if fence:
         text = fence.group(1).strip()
 
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        pass
-
-    # 回退：截取第一个 { 到最后一个 }（或 [ 到 ]）
+    candidates = [text]
+    # 从第一个 {/[ 开始截取平衡片段，忽略尾随的说明文字
     for opener, closer in (("{", "}"), ("[", "]")):
         start = text.find(opener)
-        end = text.rfind(closer)
-        if start != -1 and end > start:
+        if start != -1:
+            end = _balanced_end(text, start, opener, closer)
+            if end != -1:
+                candidates.append(text[start : end + 1])
+
+    for cand in candidates:
+        try:
+            return json.loads(cand)
+        except json.JSONDecodeError:
+            # 修复常见问题：尾随逗号
+            fixed = re.sub(r",\s*([}\]])", r"\1", cand)
             try:
-                return json.loads(text[start : end + 1])
+                return json.loads(fixed)
             except json.JSONDecodeError:
                 continue
 
@@ -76,4 +107,16 @@ class LLMClient:
         return (resp.choices[0].message.content or "").strip()
 
     def chat_json(self, messages: List[Dict[str, str]], temperature: float = 0.0) -> Any:
-        return extract_json(self.chat(messages, temperature=temperature))
+        # 优先用 JSON 模式强制合法 JSON（DeepSeek/OpenAI 支持）；供应商不支持则回退
+        try:
+            resp = self.client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                temperature=temperature,
+                max_tokens=2000,
+                response_format={"type": "json_object"},
+            )
+            text = (resp.choices[0].message.content or "").strip()
+        except Exception:
+            text = self.chat(messages, temperature=temperature)
+        return extract_json(text)
