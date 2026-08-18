@@ -34,6 +34,11 @@ class FakeLLM(LLMClient):
             "rationale": "有具体行动和结果，符合正向锚点。",
         }
 
+    def chat_structured(self, messages, result_cls, temperature=0.0):
+        if result_cls.__name__ == "FollowupDecision":
+            return result_cls(done=True, question="")
+        return result_cls(score=4.0, confidence=0.8, evidence=["证据"], rationale="合理")
+
 
 def main() -> None:
     config = load_config(str(PROJECT_ROOT / "config" / "dimensions.yaml"))

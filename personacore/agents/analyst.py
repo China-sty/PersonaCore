@@ -6,6 +6,7 @@ from typing import Dict, List
 
 from ..config import Dimension
 from ..llm import LLMClient
+from ..models import DimensionAnalysis
 from ._util import format_turns
 
 _ANALYST_SYSTEM = """你是人格测评专家，专门评估大五人格中的「{dim_name}」（{bigfive}）。
@@ -18,8 +19,7 @@ _ANALYST_SYSTEM = """你是人格测评专家，专门评估大五人格中的�
 - 若证据不足，请降低 confidence。
 - 分数含义：{scale_min}=明显呈现负向锚点，{mid}=中性/信息不足，{scale_max}=明显呈现正向锚点。
 
-严格只输出 JSON（不要输出任何其他文字），字段：
-{{"score": <float>, "confidence": <0~1 的 float>, "evidence": ["<原文引用1>", "..."], "rationale": "<一句话理由>"}}"""
+请通过 respond 函数返回分析结果。"""
 
 
 @dataclass
@@ -62,13 +62,13 @@ class Analyst:
             {"role": "system", "content": system},
             {"role": "user", "content": user},
         ]
-        data = self.llm.chat_json(messages, temperature=0.0)
+        analysis = self.llm.chat_structured(messages, DimensionAnalysis, temperature=0.0)
 
         return DimensionResult(
             dimension_key=dim.key,
             name=dim.name,
-            score=_clamp(float(data.get("score", mid)), scale_min, scale_max),
-            confidence=_clamp(float(data.get("confidence", 0.5)), 0.0, 1.0),
-            evidence=[str(e) for e in data.get("evidence", [])],
-            rationale=str(data.get("rationale", "")),
+            score=_clamp(analysis.score, scale_min, scale_max),
+            confidence=_clamp(analysis.confidence, 0.0, 1.0),
+            evidence=analysis.evidence,
+            rationale=analysis.rationale,
         )

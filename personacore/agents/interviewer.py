@@ -5,6 +5,7 @@ from typing import Dict, List
 
 from ..config import Dimension
 from ..llm import LLMClient
+from ..models import FollowupDecision
 from ._util import format_turns
 
 _FOLLOWUP_SYSTEM = """你是一位专业的结构化行为面试官，正在测评候选人「{dim_name}」（大五人格 {bigfive}）。
@@ -15,8 +16,7 @@ _FOLLOWUP_SYSTEM = """你是一位专业的结构化行为面试官，正在测�
 - 若证据已充分（有具体事例、具体行动与结果），done 设为 true，question 设为空字符串。
 - 若证据不足（过于笼统、停留在观点或"我们一般会怎么做"），done 设为 false，question 给出一句简短追问，引导对方补充具体行为细节；追问要自然、中立，不暗示"正确答案"。
 
-严格只输出 JSON（不要输出任何其他文字），字段：
-{{"done": <true 或 false>, "question": "<追问内容，若 done 为 true 则给空字符串>"}}"""
+请通过 respond 函数返回判断结果。"""
 
 
 class Interviewer:
@@ -45,7 +45,6 @@ class Interviewer:
             {"role": "system", "content": system},
             {"role": "user", "content": user},
         ]
-        data = self.llm.chat_json(messages, temperature=0.2)
-        done = bool(data.get("done", False))
-        question = str(data.get("question", "")).strip()
-        return "DONE" if done or not question else question
+        decision = self.llm.chat_structured(messages, FollowupDecision, temperature=0.2)
+        question = decision.question.strip()
+        return "DONE" if decision.done or not question else question

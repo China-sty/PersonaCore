@@ -120,3 +120,37 @@ class LLMClient:
         except Exception:
             text = self.chat(messages, temperature=temperature)
         return extract_json(text)
+
+    def chat_structured(self, messages: List[Dict[str, str]], result_cls, temperature: float = 0.0):
+        """结构化输出：优先 function calling（填函数参数），回退 JSON 模式；返回 result_cls 实例。
+
+        result_cls 为 Pydantic 模型类，输出会经过 model_validate 校验。
+        """
+        schema = result_cls.model_json_schema()
+        data = None
+        try:
+            resp = self.client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                temperature=temperature,
+                tools=[{
+                    "type": "function",
+                    "function": {
+                        "name": "respond",
+                        "description": "返回结构化结果",
+                        "parameters": schema,
+                    },
+                }],
+                tool_choice={"type": "function", "function": {"name": "respond"}},
+            )
+            msg = resp.choices[0].message
+            if msg.tool_calls:
+                data = json.loads(msg.tool_calls[0].function.arguments)
+            elif msg.content:
+                data = extract_json(msg.content)
+        except Exception:
+            data = None
+
+        if data is None:
+            data = self.chat_json(messages, temperature=temperature)
+        return result_cls.model_validate(data)

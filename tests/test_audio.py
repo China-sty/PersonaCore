@@ -27,6 +27,11 @@ class FakeLLM(LLMClient):
     def chat_json(self, messages, temperature=0.0):
         return {"score": 4.0, "confidence": 0.8, "evidence": ["证据"], "rationale": "合理"}
 
+    def chat_structured(self, messages, result_cls, temperature=0.0):
+        if result_cls.__name__ == "FollowupDecision":
+            return result_cls(done=True, question="")
+        return result_cls(score=4.0, confidence=0.8, evidence=["证据"], rationale="合理")
+
 
 class FakeEmotion(EmotionRecognizer):
     def recognize(self, audio, sample_rate=16000):
