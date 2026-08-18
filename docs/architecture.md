@@ -1,26 +1,27 @@
 # PersonaCore 架构文档
 
-> 版本：v0.1（MVP，文字对话阶段）　|　更新：2026-08-14
-> 本文档描述当前已实现的多智能体文字面试性格测评系统（大五人格 OCEAN）。
+> 版本：v0.2（含 Phase 2 音频模态）　|　更新：2026-08-18
+> 本文档描述当前已实现的多智能体面试性格测评系统（大五人格 OCEAN，文字 + 音频）。
 
 ---
 
 ## 1. 系统概述
 
 ### 1.1 定位
-PersonaCore 是一个**多模态、多智能体**的面试性格测评系统。当前 MVP 只实现第一模态（**文字对话**），核心链路为：
+PersonaCore 是一个**多模态、多智能体**的面试性格测评系统。当前已实现**文字 + 音频**两个模态，核心链路为：
 
-> **文字面试 → 大五人格评分 → 筛选结论 → 报告**
+> **文字/语音面试 → 大五人格评分 → 筛选结论 → 报告**
 
-最终目标：扩展到音频、视频模态，对候选人在**责任心、团队性、抗压、正向情绪**等维度上做量化打分，用于**筛选目标人群**。
+最终目标：扩展到视频模态，对候选人在**责任心、团队性、抗压、正向情绪**等维度上做量化打分，用于**筛选目标人群**。
 
-### 1.2 MVP 范围（已实现）
-- ✅ 结构化文字面试（自适应追问）
+### 1.2 已实现范围
+- ✅ 结构化文字/语音面试（自适应追问）
 - ✅ 大五人格（OCEAN）五个维度打分
 - ✅ 证据落地（每个分数引用原文）
 - ✅ 综合分 + 通过/待定/淘汰判定
-- ✅ 每次运行独立报告（`.md` + `.json`）
-- ⬜ 音频、视频模态（见 [`plan.md`](../plan.md) Phase 2/3）
+- ✅ SQLite 落库 + 管理面板（雷达图 + 报告）
+- ✅ 音频模态：ASR 转写（DashScope）+ 情绪识别（emotion2vec）
+- ⬜ 视频模态（见 [`plan.md`](../plan.md) Phase 3）
 
 ---
 
@@ -31,40 +32,47 @@ PersonaCore 是一个**多模态、多智能体**的面试性格测评系统。�
 ```mermaid
 flowchart TB
     subgraph L1["接入层"]
-        CLI["CLI · personacore/main.py<br/>参数解析 / 输出 / 落盘"]
+        CLI["CLI · main.py"]
+        WEB["Web · web.py + 前端 + /admin"]
     end
 
     subgraph L2["编排层"]
-        ORCH["Orchestrator · orchestrator.py<br/>流程调度 / 会话状态"]
+        ENG["InterviewEngine · engine.py<br/>面试状态机（CLI/Web 共用）"]
     end
 
     subgraph L3["智能体层"]
-        IV["面试官 Interviewer<br/>提问 + 追问判断"]
-        AN["维度分析师 Analyst × 5<br/>每维度打分"]
-        AR["裁决 Arbiter<br/>融合 + 筛选判定"]
-        RP["报告 Reporter<br/>Markdown 渲染"]
+        IV["面试官 Interviewer"]
+        AN["维度分析师 Analyst × 5"]
+        AR["裁决 Arbiter"]
+        RP["报告 Reporter"]
     end
 
-    subgraph L4["能力层"]
-        LLM["LLMClient · llm.py<br/>OpenAI 兼容 · 可插拔"]
+    subgraph L4["多模态层"]
+        ASR["ASR 转写 · DashScope"]
+        EMO["情绪识别 · emotion2vec"]
     end
 
-    subgraph L5["数据层"]
-        CFG["config/dimensions.yaml<br/>维度 / 题库 / 权重"]
-        OUT["report_output/<run_id>.md / .json<br/>运行产物"]
+    subgraph L5["能力层"]
+        LLM["LLM · DeepSeek<br/>（OpenAI 兼容 + 结构化输出）"]
     end
 
-    CLI --> ORCH
-    ORCH --> IV
-    ORCH --> AN
-    ORCH --> AR
-    ORCH --> RP
+    subgraph L6["数据层"]
+        DB["Store · SQLite"]
+        CFG["dimensions.yaml"]
+        AUD["音频落盘"]
+    end
+
+    CLI --> ENG
+    WEB --> ENG
+    WEB --> ASR
+    WEB --> EMO
+    ENG --> IV --> AN --> AR --> RP
     IV --> LLM
     AN --> LLM
     AR --> LLM
-    ORCH --> CFG
-    ORCH --> OUT
-    CLI --> OUT
+    ENG --> DB
+    WEB --> AUD
+    ENG --> CFG
 ```
 
 > 接入层现有两种入口：**CLI**（`main.py`）与 **Web**（`web.py`），二者都驱动同一个 `InterviewEngine` 状态机（`engine.py`），面试核心逻辑无 I/O、可复用。
@@ -80,22 +88,28 @@ PersonaCore/
 │  ├─ orchestrator.py       # CLI 编排（驱动 engine）
 │  ├─ session.py            # RunResult：运行结果与报告渲染
 │  ├─ store.py              # SQLite 持久化（面试结果落库）
-│  ├─ llm.py                # LLM 客户端（OpenAI 兼容 + JSON 提取）
+│  ├─ llm.py                # LLM 客户端（OpenAI 兼容 + 结构化输出）
+│  ├─ models.py             # 结构化输出 Pydantic 模型
 │  ├─ config.py             # 配置加载（维度/权重/阈值）
-│  └─ agents/
-│     ├─ interviewer.py     # 面试官 Agent
-│     ├─ analyst.py         # 维度分析师 Agent
-│     ├─ arbiter.py         # 裁决 Agent
-│     ├─ report.py          # 报告 Agent
-│     └─ _util.py           # 共享工具
-├─ web/index.html           # Web 前端（聊天界面）
-├─ web/admin.html           # 管理员面板前端
-├─ data/personacore.db      # SQLite 数据库（运行时生成，gitignore）
+│  ├─ agents/
+│  │  ├─ interviewer.py     # 面试官 Agent
+│  │  ├─ analyst.py         # 维度分析师 Agent
+│  │  ├─ arbiter.py         # 裁决 Agent
+│  │  ├─ report.py          # 报告 Agent
+│  │  └─ _util.py           # 共享工具
+│  └─ modalities/
+│     ├─ asr.py             # ASR 转写（DashScope）
+│     ├─ emotion.py         # 情绪识别（emotion2vec）
+│     └─ audio_util.py      # ffmpeg 转码
+├─ web/index.html           # Web 前端（聊天界面 + 录音）
+├─ web/admin.html           # 管理员面板前端（雷达图）
+├─ data/                    # SQLite 数据库 + 音频落盘（gitignore）
 ├─ deploy/                  # systemd / nginx / deploy.sh
 ├─ config/dimensions.yaml   # 大五维度、锚点、题库、权重
 ├─ tests/test_smoke.py      # CLI 端到端冒烟测试（假 LLM）
 ├─ tests/test_web.py        # Web 冒烟测试
 ├─ tests/test_admin.py      # 管理面板冒烟测试
+├─ tests/test_audio.py      # 音频链路冒烟测试
 ├─ docs/architecture.md     # 本文档
 └─ plan.md                  # 分阶段实施计划
 ```
@@ -108,8 +122,8 @@ PersonaCore/
 
 | Agent | 文件 | 职责 | LLM 调用 | 输出 |
 |-------|------|------|---------|------|
-| 面试官 | `interviewer.py` | 提问 + 判断证据是否充分并追问 | `chat_json` | `{"done": bool, "question": str}` |
-| 维度分析师 | `analyst.py` | 单维度打分 + 引用原文证据 | `chat_json` | `DimensionResult` |
+| 面试官 | `interviewer.py` | 提问 + 判断证据是否充分并追问 | `chat_structured` | `FollowupDecision` |
+| 维度分析师 | `analyst.py` | 单维度打分 + 引用原文证据 | `chat_structured` | `DimensionResult` |
 | 裁决 | `arbiter.py` | 融合各维度、算综合分、判定结论 | `chat`（仅总结） | `ArbiterResult` |
 | 报告 | `report.py` | 渲染 Markdown 报告 | 无 | `str` |
 
@@ -315,8 +329,8 @@ defaults:
 ## 7. LLM 抽象层
 
 - **OpenAI 兼容接口**：通过 `OPENAI_BASE_URL` / `OPENAI_API_KEY` / `LLM_MODEL` 指向任意服务（OpenAI / DeepSeek / 通义 / 智谱）。
+- **结构化输出**（`llm.chat_structured`）：优先走 **function calling**（`tool_choice` 强制函数调用），返回参数经 Pydantic `model_validate` 校验；供应商不支持时回退 JSON 模式 + `extract_json` 容错解析。
 - **可插拔**：后续可加其他 Provider，Agent 层不感知具体实现。
-- **稳健 JSON 提取**（`llm.extract_json`）：先尝试 `json.loads`，再剥代码块、截取首尾 `{}`/`[]`，兼容各模型输出差异。
 - **密钥安全**：`.env` 被 gitignore，不进入版本库。
 
 ---
@@ -338,20 +352,22 @@ defaults:
 
 | 决策 | 理由 | 权衡 |
 |------|------|------|
-| 结构化 JSON 输出 | 避免自由文本解析脆弱（追问曾泄露思考过程） | 依赖模型遵循 JSON 指令 |
+| 结构化输出（function calling + Pydantic） | 从机制上保证输出合法，避免 JSON 文本解析脆弱 | 依赖供应商支持 tool calling |
+| 情绪信号作为中立事实注入 | 不直接打分，由 LLM 结合锚点解读，可解释可回溯 | 影响权重由 LLM 把握，需校准 |
 | 加权/判定用确定性代码 | 数学不该交给 LLM | 判定规则目前是简化版，需产品化 |
 | 单分析师/维度（非多轮辩论） | MVP 简单可控 | 后续可升级共识式提升鲁棒性 |
 | 证据必须引用原文 | 防幻觉、防「说得漂亮=高分」 | 对模型能力要求高 |
-| OpenAI 兼容层 | 多供应商可切换、零锁定 | 各家 JSON 模式能力有差异 |
+| OpenAI 兼容层 | 多供应商可切换、零锁定 | 各家 tool calling 能力有差异 |
 
 ---
 
 ## 10. 扩展规划
 
-| 阶段 | 内容 | 对架构的影响 |
-|------|------|-------------|
-| Phase 2 | 音频（ASR + 副语言情绪） | 新增转写 Agent、语音信号 Agent，裁决层做双模态融合 |
-| Phase 3 | 视频（表情/微表情） | 新增表情信号 Agent，多模态时间对齐 |
-| Phase 4 | 筛选产品化 + 反作弊 | 反作弊 Agent、人在环复核、公平性测试、Web 接入 |
+| 阶段 | 内容 | 对架构的影响 | 状态 |
+|------|------|-------------|------|
+| Phase 1 | 文字面试 MVP | 多智能体闭环 + Web + SQLite + 管理面板 | ✅ 完成 |
+| Phase 2 | 音频（ASR + 情绪识别） | 新增多模态层（DashScope ASR + emotion2vec） | ✅ 完成 |
+| Phase 3 | 视频（表情/微表情） | 新增表情信号 Agent，多模态时间对齐 | 🔄 待启动 |
+| Phase 4 | 筛选产品化 + 反作弊 | 反作弊 Agent、人在环复核、公平性测试 | ⬜ 未开始 |
 
 详见 [`plan.md`](../plan.md)。

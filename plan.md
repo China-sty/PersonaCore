@@ -3,6 +3,8 @@
 > 目标：通过**多模态线上测评**（文字 / 音频 / 视频）识别面试对象的性格特质，
 > 最终用于**筛选目标人群**——在责任心、团队性、抗压与正向情绪等维度上做量化打分与排序。
 > 采用**分阶段**推进，先用「文字对话识别性格特质」跑通 MVP，再逐步叠加音频、视频模态。
+>
+> **当前进度**：✅ Phase 1（文字）· ✅ Phase 2（音频）已完成；🔄 Phase 3（视频）待启动。
 
 ---
 
@@ -98,22 +100,22 @@
 - [ ] 数据合规：知情同意书、数据最小化、脱敏、留存与删除策略（对齐《个人信息保护法 PIPL》）。
 - [ ] 建立**校准基准集**：邀请专家对若干样本做人工标注（golden set）。
 
-### Phase 1 — 文字对话识别性格特质（MVP）✅ 优先
+### Phase 1 — 文字对话识别性格特质（MVP）✅ 已完成
 **目标**：纯文本完成一次完整面试 → 输出有证据的维度评分与报告。
-- [ ] 编排器 + 会话状态机。
-- [ ] 面试官 Agent（多维度自适应提问，STAR 追问）。
-- [ ] 每维度 1 个分析师 Agent（引用原文打分）。
-- [ ] 裁决 Agent（汇总、冲突消解、可信度）。
-- [ ] 报告 Agent（结构化报告 + 初步筛选建议）。
-- [ ] 评测：用 golden set 校准，计算与人工评分的相关性与一致性。
-- **验收**：文字对话跑通「面试→评分→报告」闭环，评分含证据引用与可信度。
+- [x] 编排器 + 会话状态机（`InterviewEngine`）。
+- [x] 面试官 Agent（多维度自适应提问，STAR 追问）。
+- [x] 每维度 1 个分析师 Agent（引用原文打分）。
+- [x] 裁决 Agent（汇总、冲突消解、可信度）。
+- [x] 报告 Agent（结构化报告 + 初步筛选建议）。
+- [ ] 评测：用 golden set 校准（并入 Phase 4）。
+- **验收**：✅ 文字对话跑通「面试→评分→报告」闭环，评分含证据引用与可信度。
 
-### Phase 2 — 音频模态（进行中）
+### Phase 2 — 音频模态 ✅ 已完成
 **目标**：候选人可语音回答，用语音情绪信号增强判断。
 
 **技术选型**：
-- ASR：阿里云 **DashScope Paraformer**（云服务，HTTP API + `DASHSCOPE_API_KEY`）
-- 情绪：**emotion2vec**（阿里 FunAudioLLM，从 ModelScope 下载）
+- ASR：阿里云 **DashScope Paraformer**（实时识别 WebSocket，`DASHSCOPE_API_KEY`）
+- 情绪：**emotion2vec**（阿里 FunAudioLLM，`funasr` + `modelscope`，从 ModelScope 下载）
 
 **融入方式**（加「多模态输入层」，不改文字推理内核）：
 ```
@@ -124,10 +126,10 @@
 
 **实施步骤**：
 - [x] 2.1 接口骨架：`modalities/asr.py`、`emotion.py` + engine/web 支持音频 + 前端录音
-- [ ] 2.1 联调 DashScope ASR（需 `DASHSCOPE_API_KEY`）
-- [ ] 2.2 接入 emotion2vec 情绪识别，信号融合进评分
-- [ ] 2.3 前端录音体验打磨
-- **验收**：语音回答可识别，语音情绪作为辅助证据进入评分。
+- [x] 2.1 联调 DashScope ASR（实时识别 WebSocket + ffmpeg 转码）
+- [x] 2.2 接入 emotion2vec 情绪识别，信号融合进评分
+- [x] 2.3 前端录音体验打磨（微信风格语音 UI）+ 管理面板雷达图可视化
+- **验收**：✅ 语音回答可识别，语音情绪作为辅助证据进入评分。
 
 ### Phase 3 — 视频模态
 **目标**：接入视频，非言语信号 + 时间对齐。
@@ -162,31 +164,33 @@ GoldenSample         用于校准的人工标注集
 
 ---
 
-## 6. 技术栈建议
+## 6. 技术栈（当前实际使用）
 
-| 层 | 候选技术 |
-|----|---------|
-| 智能体/LLM | Claude（Sonnet/Opus 分级）、Claude Agent SDK / LangGraph / CrewAI 做编排 |
-| 编排/状态 | LangGraph（图状态机）或自研编排器；会话状态存 Redis/DB |
-| ASR | Whisper / FunASR / 阿里·腾讯云 ASR |
-| 语音情绪 | wav2vec2 / openSMILE 特征 + 情绪分类模型 |
-| 表情/微表情 | MediaPipe / OpenFace / RetinaFace + AU 检测 |
-| 后端 | Python（FastAPI）为主；异步任务队列（Celery/Arq）处理长任务 |
-| 前端 | Web（React）+ 视频通话 SDK（TRTC/Agora/自建 WebRTC） |
-| 存储 | PostgreSQL（结构化）+ 对象存储（音视频文件） |
-| 评测 | 自建评测集 + 打分一致性/相关性指标，CI 回归 |
+| 层 | 技术 |
+|----|------|
+| 语言 | Python 3.10+ |
+| LLM | DeepSeek（OpenAI 兼容，`openai` SDK）；结构化输出走 function calling + Pydantic 校验 |
+| ASR | 阿里云 DashScope Paraformer（实时识别 WebSocket） |
+| 语音情绪 | emotion2vec（`funasr` + `modelscope`，ModelScope 下载） |
+| Web 后端 | FastAPI + uvicorn |
+| 前端 | 原生 HTML/JS（无框架），录音用 MediaRecorder，图表用纯 SVG |
+| 存储 | SQLite（面试结果）+ 本地文件（音频落盘） |
+| 部署 | systemd + nginx，阿里云 ECS Ubuntu 24.04 |
+| 测试 | 纯 Python 冒烟测试（假 LLM / Mock ASR） |
+
+> Phase 3 视频会新增：人脸/AU 检测（MediaPipe/OpenFace）、三模态时间对齐。
 
 ---
 
 ## 7. 里程碑与时间（建议节奏，可调整）
 
-| 阶段 | 主要交付物 | 建议周期 |
-|------|-----------|---------|
-| Phase 0 | 维度/题库/rubric/合规/校准集 | 与 P1 并行，1~2 周 |
-| Phase 1 | 文字 MVP（面试→评分→报告闭环） | 2~4 周 |
-| Phase 2 | 音频模态接入与融合 | 2~3 周 |
-| Phase 3 | 视频模态接入与三模态融合 | 3~4 周 |
-| Phase 4 | 筛选产品化 + 反作弊 + 上线 | 3~4 周 |
+| 阶段 | 主要交付物 | 状态 |
+|------|-----------|------|
+| Phase 0 | 维度/题库/rubric/合规/校准集 | ✅ 维度+题库已做，校准集并入 P4 |
+| Phase 1 | 文字 MVP（面试→评分→报告闭环） | ✅ 已完成 |
+| Phase 2 | 音频模态（ASR + 情绪识别） | ✅ 已完成 |
+| Phase 3 | 视频模态接入与三模态融合 | 🔄 待启动 |
+| Phase 4 | 筛选产品化 + 反作弊 + 上线 | ⬜ 未开始 |
 
 ---
 
@@ -221,11 +225,10 @@ PersonaCore/
 
 ---
 
-## 10. 下一步（立即开始）
+## 10. 下一步
 
-1. 冻结**大五维度定义与行为锚点表**（Phase 0）。
-2. 编写**结构化题库 + rubric**（覆盖 OCEAN 五个维度）。
-3. 搭建 **Phase 1 MVP** 的最小闭环：面试官 Agent + 维度分析师 Agent + 裁决 Agent + 报告 Agent + 管理员维度配置。
-4. 准备 golden set 用于校准与回归。
+1. **Phase 3 视频模态**：人脸检测 + 动作单元(AU) + 表情/微表情识别，三模态时间对齐。
+2. **Phase 4 产品化**：反作弊 Agent、golden set 校准、公平性测试、人在环复核。
+3. 补充优化：HTTPS、会话持久化到数据库、候选人对比视图。
 
-> 待确认：① 目标人群的具体画像/行业（影响题目与维度权重）；② 部署地区与合规要求；③ 是否接受先做「异步上传音视频」再过渡到实时。
+> 待确认：① 目标人群的具体画像/行业（影响题目与维度权重）；② 部署地区与合规要求；③ 视频模态是否接受「异步上传」起步。
