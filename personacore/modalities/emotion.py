@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import abc
 import tempfile
+import threading
 from pathlib import Path
 
 from .audio_util import convert_to_wav16k
@@ -43,12 +44,21 @@ class Emotion2vecRecognizer(EmotionRecognizer):
     def __init__(self, model_name: str = "iic/emotion2vec_plus_base"):
         self.model_name = model_name
         self._model = None
+        self._lock = threading.Lock()
 
     def _load(self):
-        if self._model is None:
-            from funasr import AutoModel
-            self._model = AutoModel(model=self.model_name)
-        return self._model
+        with self._lock:
+            if self._model is None:
+                from funasr import AutoModel
+                self._model = AutoModel(model=self.model_name)
+            return self._model
+
+    def warmup(self) -> None:
+        """预加载模型（后台调用，避免首次识别等待）。"""
+        try:
+            self._load()
+        except Exception:
+            pass
 
     def recognize(self, audio: bytes, sample_rate: int = 16000) -> dict | None:
         try:
@@ -74,12 +84,16 @@ class Emotion2vecRecognizer(EmotionRecognizer):
             if isinstance(r, dict):
                 labels = r.get("labels")
                 scores = r.get("scores")
-                if isinstance(labels, str):
+                if isinstance(labels, list) and isinstance(scores, list) and len(labels) == len(scores):
+                    # 按分数排序，跳过 <unk>
+                    for lab, sc in sorted(zip(labels, scores), key=lambda x: -x[1]):
+                        if lab == "<unk>":
+                            continue
+                        label, score = str(lab), float(sc)
+                        break
+                elif isinstance(labels, str):
                     label = labels
-                    score = float(scores[0]) if isinstance(scores, list) and scores else float(scores or 0)
-                elif isinstance(labels, list) and isinstance(scores, list) and len(labels) == len(scores):
-                    idx = max(range(len(scores)), key=lambda i: scores[i])
-                    label, score = labels[idx], float(scores[idx])
+                    score = float(scores[0] if isinstance(scores, list) and scores else (scores or 0))
                 elif r.get("outputs"):
                     out = r["outputs"][0]
                     label = out.get("label")
@@ -89,4 +103,6 @@ class Emotion2vecRecognizer(EmotionRecognizer):
 
         if not label:
             return None
+        if "/" in label:
+            label = label.split("/")[0]  # "愤怒/angry" -> "愤怒"
         return {"emotion": _EN2ZH.get(label, label), "confidence": round(score, 3)}

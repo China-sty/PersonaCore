@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import secrets
+import threading
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -44,6 +45,8 @@ try:
 except RuntimeError:
     transcriber = None
 emotion_recognizer: EmotionRecognizer = Emotion2vecRecognizer()
+# 后台预热情绪模型，避免第一个语音回答等待加载
+threading.Thread(target=emotion_recognizer.warmup, daemon=True).start()
 
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin123")
 _admin_tokens: set[str] = set()
