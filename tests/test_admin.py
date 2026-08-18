@@ -38,7 +38,7 @@ def main() -> None:
     # 完整面试 + 报告（触发落库）
     sid = client.post("/interview/start").json()["session_id"]
     for _ in range(6):
-        r = client.post(f"/interview/{sid}/message", json={"message": "我有具体例子，负责排期并按时交付"})
+        r = client.post(f"/interview/{sid}/message", data={"message": "我有具体例子，负责排期并按时交付"})
         if r.json()["finished"]:
             break
     assert client.get(f"/interview/{sid}/report").status_code == 200

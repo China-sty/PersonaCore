@@ -4,10 +4,11 @@ from __future__ import annotations
 import os
 import secrets
 import uuid
+from datetime import datetime
 from pathlib import Path
 
 from dotenv import load_dotenv
-from fastapi import BackgroundTasks, FastAPI, HTTPException, Request, Response
+from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, Request, Response, UploadFile
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
@@ -16,12 +17,15 @@ load_dotenv()
 from .config import load_config
 from .engine import InterviewEngine
 from .llm import LLMClient
+from .modalities.asr import DashscopeTranscriber, Transcriber
+from .modalities.emotion import EmotionRecognizer, NullEmotionRecognizer
 from .store import Store
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 CONFIG_PATH = PROJECT_ROOT / "config" / "dimensions.yaml"
 INDEX_PATH = PROJECT_ROOT / "web" / "index.html"
 ADMIN_PATH = PROJECT_ROOT / "web" / "admin.html"
+AUDIO_DIR = PROJECT_ROOT / "data" / "audio"
 
 config = load_config(str(CONFIG_PATH))
 try:
@@ -34,6 +38,13 @@ except RuntimeError as e:
 store = Store()
 sessions: dict[str, InterviewEngine] = {}
 
+# 多模态能力（可插拔，未配置则降级为仅文字）
+try:
+    transcriber: Transcriber | None = DashscopeTranscriber()
+except RuntimeError:
+    transcriber = None
+emotion_recognizer: EmotionRecognizer = NullEmotionRecognizer()  # Phase 2.2 换成 Emotion2vecRecognizer
+
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin123")
 _admin_tokens: set[str] = set()
 
@@ -43,6 +54,15 @@ app = FastAPI(title="PersonaCore")
 def _finalize_and_save(sid: str, engine: InterviewEngine) -> None:
     result = engine.finalize()
     store.save(sid, result)
+
+
+def save_audio(session_id: str, audio_bytes: bytes) -> str:
+    """把候选人的音频回答落盘（记录/审计），返回保存路径。"""
+    d = AUDIO_DIR / session_id
+    d.mkdir(parents=True, exist_ok=True)
+    path = d / f"{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.webm"
+    path.write_bytes(audio_bytes)
+    return str(path)
 
 
 # ---- 前端页面 ----
@@ -118,22 +138,37 @@ def start_interview() -> dict:
     return {"session_id": sid, "messages": [opening, first_q]}
 
 
-class MessageIn(BaseModel):
-    message: str
-
-
 @app.post("/interview/{sid}/message")
-def post_message(sid: str, body: MessageIn, background_tasks: BackgroundTasks) -> dict:
+def post_message(
+    sid: str,
+    background_tasks: BackgroundTasks,
+    message: str = Form(None),
+    audio: UploadFile = File(None),
+) -> dict:
     engine = sessions.get(sid)
     if engine is None:
         raise HTTPException(status_code=404, detail="会话不存在或已过期")
     if engine.finished:
         raise HTTPException(status_code=400, detail="面试已结束")
-    reply = engine.send(body.message)
+
+    text = (message or "").strip()
+    signals = None
+    if audio is not None:
+        audio_bytes = audio.file.read()
+        save_audio(sid, audio_bytes)  # 先记录音频（审计）
+        if transcriber is None:
+            raise HTTPException(status_code=500, detail="未配置 ASR（DASHSCOPE_API_KEY），无法处理音频")
+        text = transcriber.transcribe(audio_bytes)
+        signals = emotion_recognizer.recognize(audio_bytes)
+
+    if not text:
+        raise HTTPException(status_code=400, detail="请提供文字或音频")
+
+    reply = engine.send(text, signals)
     if engine.finished:
         # 面试结束：后台异步分析 + 落库，候选人无需等待
         background_tasks.add_task(_finalize_and_save, sid, engine)
-    return {"message": reply, "finished": engine.finished}
+    return {"message": reply, "finished": engine.finished, "asr_text": text}
 
 
 @app.get("/interview/{sid}/report")

@@ -61,6 +61,7 @@
   <!-- 输入 -->
   <div id="inputRow" class="input-row" style="display:none">
     <input id="msgInput" placeholder="输入你的回答，回车发送…">
+    <button id="recBtn" onclick="toggleRec()" title="语音回答">🎤</button>
     <button id="sendBtn" onclick="send()">发送</button>
   </div>
 
@@ -102,20 +103,12 @@ async function start() {
   }
 }
 
-async function send() {
-  const input = document.getElementById('msgInput');
-  const text = input.value.trim();
-  if (!text) return;
-  input.value = '';
-  addMsg('候选人', text);
+async function postAnswer(fd, previewText) {
+  addMsg('候选人', previewText);
   const btn = document.getElementById('sendBtn');
   btn.disabled = true;
   try {
-    const res = await fetch('/interview/' + sessionId + '/message', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: text })
-    });
+    const res = await fetch('/interview/' + sessionId + '/message', { method: 'POST', body: fd });
     if (!res.ok) throw new Error(await res.text());
     const data = await res.json();
     addMsg('面试官', data.message);
@@ -128,6 +121,44 @@ async function send() {
     addMsg('系统', '出错了：' + e.message);
   } finally {
     btn.disabled = false;
+  }
+}
+
+async function send() {
+  const input = document.getElementById('msgInput');
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = '';
+  const fd = new FormData();
+  fd.append('message', text);
+  postAnswer(fd, text);
+}
+
+let mediaRecorder = null, audioChunks = [], recStream = null;
+
+async function toggleRec() {
+  const btn = document.getElementById('recBtn');
+  if (mediaRecorder && mediaRecorder.state === 'recording') {
+    mediaRecorder.stop();
+    btn.textContent = '🎤';
+    return;
+  }
+  try {
+    recStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    mediaRecorder = new MediaRecorder(recStream);
+    audioChunks = [];
+    mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+    mediaRecorder.onstop = () => {
+      recStream.getTracks().forEach(t => t.stop());
+      const blob = new Blob(audioChunks, { type: mediaRecorder.mimeType || 'audio/webm' });
+      const fd = new FormData();
+      fd.append('audio', blob, 'answer.webm');
+      postAnswer(fd, '（语音回答）');
+    };
+    mediaRecorder.start();
+    btn.textContent = '⏹ 停止';
+  } catch (e) {
+    addMsg('系统', '无法录音：' + e.message);
   }
 }
 

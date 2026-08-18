@@ -45,7 +45,13 @@ class RunResult:
             parts.append(f"### {dim.name}")
             for t in self.transcripts.get(dim.key, []):
                 role = "面试官" if t["role"] == "interviewer" else "候选人"
-                parts.append(f"- **{role}**：{t['content']}")
+                line = f"- **{role}**：{t['content']}"
+                sig = t.get("signals")
+                if isinstance(sig, dict) and sig.get("emotion"):
+                    conf = sig.get("confidence")
+                    suffix = f"（置信度 {conf:.2f}）" if isinstance(conf, (int, float)) else ""
+                    line += f"　*语音情绪：{sig['emotion']}{suffix}*"
+                parts.append(line)
             parts.append("")
         parts.append(Reporter().render(self.arbiter, self.config))
         return "\n".join(parts)

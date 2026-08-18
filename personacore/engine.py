@@ -37,13 +37,20 @@ class InterviewEngine:
         self._turns = [{"role": "interviewer", "content": q}]
         return [opening, q]
 
-    def send(self, answer: str) -> str:
-        """候选人回答后，返回面试官下一条消息；面试结束时返回结束语并置 finished。"""
+    def send(self, answer: str, signals: dict | None = None) -> str:
+        """候选人回答后，返回面试官下一条消息；面试结束时返回结束语并置 finished。
+
+        signals 为可选的语音信号 dict（如 {"emotion":"平静","confidence":0.9}），
+        会作为辅助证据注入分析师/面试官的上下文。
+        """
         if self.finished:
             raise RuntimeError("面试已结束")
 
         dim = self.dims[self._i]
-        self._turns.append({"role": "candidate", "content": answer})
+        turn: dict = {"role": "candidate", "content": answer}
+        if signals:
+            turn["signals"] = signals
+        self._turns.append(turn)
 
         # 判断是否需要追问
         if self._probes < self.config.max_probes:

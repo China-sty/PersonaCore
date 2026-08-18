@@ -43,7 +43,7 @@ def main() -> None:
     answers = iter(["答1", "答2", "答3", "答4", "答5", "答6", "答7", "答8", "答9", "答10"])
     finished = False
     for _ in range(20):
-        r = client.post(f"/interview/{sid}/message", json={"message": next(answers, "记不清了")})
+        r = client.post(f"/interview/{sid}/message", data={"message": next(answers, "记不清了")})
         assert r.status_code == 200, r.text
         if r.json()["finished"]:
             finished = True
