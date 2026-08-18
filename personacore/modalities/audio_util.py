@@ -33,3 +33,24 @@ def convert_to_pcm16k(audio: bytes) -> bytes:
     finally:
         src_path.unlink(missing_ok=True)
         dst_path.unlink(missing_ok=True)
+
+
+def convert_to_wav16k(audio: bytes) -> bytes:
+    """用 ffmpeg 把任意音频转成 WAV 16kHz 单声道（emotion2vec 需要的格式）。"""
+    if shutil.which("ffmpeg") is None:
+        raise RuntimeError("未安装 ffmpeg，无法转码音频")
+
+    with tempfile.NamedTemporaryFile(suffix=".in", delete=False) as src:
+        src.write(audio)
+        src_path = Path(src.name)
+
+    dst_path = src_path.with_suffix(".wav")
+    try:
+        subprocess.run(
+            ["ffmpeg", "-y", "-i", str(src_path), "-ar", "16000", "-ac", "1", str(dst_path)],
+            check=True, capture_output=True,
+        )
+        return dst_path.read_bytes()
+    finally:
+        src_path.unlink(missing_ok=True)
+        dst_path.unlink(missing_ok=True)

@@ -18,7 +18,7 @@ from .config import load_config
 from .engine import InterviewEngine
 from .llm import LLMClient
 from .modalities.asr import DashscopeTranscriber, Transcriber
-from .modalities.emotion import EmotionRecognizer, NullEmotionRecognizer
+from .modalities.emotion import Emotion2vecRecognizer, EmotionRecognizer
 from .store import Store
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -43,7 +43,7 @@ try:
     transcriber: Transcriber | None = DashscopeTranscriber()
 except RuntimeError:
     transcriber = None
-emotion_recognizer: EmotionRecognizer = NullEmotionRecognizer()  # Phase 2.2 换成 Emotion2vecRecognizer
+emotion_recognizer: EmotionRecognizer = Emotion2vecRecognizer()
 
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin123")
 _admin_tokens: set[str] = set()
