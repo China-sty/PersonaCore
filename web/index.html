@@ -6,13 +6,8 @@
 <title>PersonaCore 性格测评</title>
 <style>
   :root {
-    --bg: #f5f6f8;
-    --card: #ffffff;
-    --primary: #3b6ef5;
-    --ai: #eef1f6;
-    --me: #3b6ef5;
-    --text: #1f2329;
-    --muted: #8a919c;
+    --bg: #f5f6f8; --card: #ffffff; --primary: #3b6ef5; --ai: #eef1f6;
+    --me: #3b6ef5; --text: #1f2329; --muted: #8a919c; --red: #f04a4a;
   }
   * { box-sizing: border-box; }
   body {
@@ -38,16 +33,47 @@
   .msg.me { align-items: flex-end; }
   .msg.me p { background: var(--me); color: #fff; }
 
-  .input-row { display: flex; gap: 8px; }
+  /* 语音气泡（微信风格：波形 + 时长） */
+  .msg.voice p { display: flex; align-items: center; gap: 8px; min-width: 68px; }
+  .v-wave { display: flex; align-items: center; gap: 2px; height: 18px; }
+  .v-wave span { width: 2px; background: #fff; border-radius: 1px; }
+  .v-wave span:nth-child(1){height:6px}.v-wave span:nth-child(2){height:12px}
+  .v-wave span:nth-child(3){height:17px}.v-wave span:nth-child(4){height:9px}
+  .v-wave span:nth-child(5){height:14px}.v-wave span:nth-child(6){height:5px}
+  .v-dur { font-size: 12px; }
+
+  /* 录音动效 */
+  .rec-indicator {
+    display: none; align-items: center; justify-content: center; gap: 12px;
+    background: var(--card); border-radius: 12px; padding: 14px;
+    box-shadow: 0 1px 6px rgba(0,0,0,.08);
+  }
+  .rec-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--red); animation: blink 1s infinite; }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.2} }
+  .rec-wave { display: flex; align-items: center; gap: 3px; height: 28px; }
+  .rec-wave span { width: 3px; background: var(--primary); border-radius: 2px; animation: wave 1s ease-in-out infinite; }
+  .rec-wave span:nth-child(1){height:8px;animation-delay:0s}
+  .rec-wave span:nth-child(2){height:20px;animation-delay:.1s}
+  .rec-wave span:nth-child(3){height:28px;animation-delay:.2s}
+  .rec-wave span:nth-child(4){height:14px;animation-delay:.3s}
+  .rec-wave span:nth-child(5){height:24px;animation-delay:.4s}
+  .rec-wave span:nth-child(6){height:10px;animation-delay:.5s}
+  .rec-wave span:nth-child(7){height:20px;animation-delay:.6s}
+  @keyframes wave { 0%,100%{transform:scaleY(.35)} 50%{transform:scaleY(1)} }
+  .rec-time { font-size: 14px; color: var(--red); min-width: 30px; }
+  .rec-hint { font-size: 13px; color: var(--muted); }
+
+  .input-row { display: flex; gap: 8px; align-items: center; }
   .input-row input { flex: 1; padding: 12px; border: 1px solid #d5d9e0; border-radius: 8px; font-size: 15px; }
-  button { padding: 11px 22px; border: none; border-radius: 8px; background: var(--primary); color: #fff; font-size: 15px; cursor: pointer; }
+  button { padding: 11px 18px; border: none; border-radius: 8px; background: var(--primary); color: #fff; font-size: 15px; cursor: pointer; }
   button:disabled { background: #b9c4e6; cursor: not-allowed; }
+  .mic-btn { width: 44px; height: 44px; padding: 0; border-radius: 50%; font-size: 20px; flex-shrink: 0; }
+  .mic-btn.recording { background: var(--red); }
   .report { display: none; background: var(--card); border-radius: 12px; padding: 16px; overflow: auto; white-space: pre-wrap; font-size: 13px; line-height: 1.6; box-shadow: 0 1px 4px rgba(0,0,0,.06); }
 </style>
 </head>
 <body>
 <div class="container">
-  <!-- 欢迎页 -->
   <div id="welcome" class="welcome">
     <div class="logo">🧑‍💼</div>
     <h1>PersonaCore · 性格特质测评</h1>
@@ -55,13 +81,19 @@
     <button id="startBtn" onclick="start()">开始面试</button>
   </div>
 
-  <!-- 聊天区 -->
   <div id="chat" class="chat" style="display:none"></div>
 
-  <!-- 输入 -->
+  <!-- 录音动效 -->
+  <div id="recIndicator" class="rec-indicator">
+    <span class="rec-dot"></span>
+    <div class="rec-wave"><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
+    <span id="recTime" class="rec-time">0″</span>
+    <span class="rec-hint">正在录音，点击麦克风结束</span>
+  </div>
+
   <div id="inputRow" class="input-row" style="display:none">
     <input id="msgInput" placeholder="输入你的回答，回车发送…">
-    <button id="recBtn" onclick="toggleRec()" title="语音回答">🎤</button>
+    <button id="recBtn" class="mic-btn" onclick="toggleRec()" title="语音回答">🎤</button>
     <button id="sendBtn" onclick="send()">发送</button>
   </div>
 
@@ -80,6 +112,17 @@ function addMsg(role, text) {
   const div = document.createElement('div');
   div.className = 'msg ' + (role === '候选人' ? 'me' : 'ai');
   div.innerHTML = '<span class="role">' + esc(role) + '</span><p>' + esc(text) + '</p>';
+  chat.appendChild(div);
+  chat.scrollTop = chat.scrollHeight;
+}
+
+// 微信风格语音气泡
+function addVoiceMsg(duration) {
+  const chat = document.getElementById('chat');
+  const div = document.createElement('div');
+  div.className = 'msg me voice';
+  const bars = '<span></span><span></span><span></span><span></span><span></span><span></span>';
+  div.innerHTML = '<span class="role">候选人</span><p><span class="v-wave">' + bars + '</span><span class="v-dur">' + duration + '″</span></p>';
   chat.appendChild(div);
   chat.scrollTop = chat.scrollHeight;
 }
@@ -103,24 +146,12 @@ async function start() {
   }
 }
 
-async function postAnswer(fd, previewText) {
-  addMsg('候选人', previewText);
-  const btn = document.getElementById('sendBtn');
-  btn.disabled = true;
-  try {
-    const res = await fetch('/interview/' + sessionId + '/message', { method: 'POST', body: fd });
-    if (!res.ok) throw new Error(await res.text());
-    const data = await res.json();
-    addMsg('面试官', data.message);
-    if (data.finished) {
-      document.getElementById('inputRow').style.display = 'none';
-      document.getElementById('reportBtn').style.display = 'inline-block';
-      addMsg('系统', '面试已结束，点击「查看报告」生成你的测评报告。');
-    }
-  } catch (e) {
-    addMsg('系统', '出错了：' + e.message);
-  } finally {
-    btn.disabled = false;
+function finishFlow(data) {
+  addMsg('面试官', data.message);
+  if (data.finished) {
+    document.getElementById('inputRow').style.display = 'none';
+    document.getElementById('reportBtn').style.display = 'inline-block';
+    addMsg('系统', '面试已结束，点击「查看报告」生成你的测评报告。');
   }
 }
 
@@ -129,18 +160,34 @@ async function send() {
   const text = input.value.trim();
   if (!text) return;
   input.value = '';
+  addMsg('候选人', text);
   const fd = new FormData();
   fd.append('message', text);
-  postAnswer(fd, text);
+  await submit(fd);
 }
 
+async function submit(fd) {
+  const btn = document.getElementById('sendBtn');
+  btn.disabled = true;
+  try {
+    const res = await fetch('/interview/' + sessionId + '/message', { method: 'POST', body: fd });
+    if (!res.ok) throw new Error(await res.text());
+    finishFlow(await res.json());
+  } catch (e) {
+    addMsg('系统', '出错了：' + e.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// —— 录音 ——
 let mediaRecorder = null, audioChunks = [], recStream = null;
+let recStartTime = null, recTimer = null;
 
 async function toggleRec() {
   const btn = document.getElementById('recBtn');
   if (mediaRecorder && mediaRecorder.state === 'recording') {
-    mediaRecorder.stop();
-    btn.textContent = '🎤';
+    stopRec();
     return;
   }
   try {
@@ -150,16 +197,41 @@ async function toggleRec() {
     mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
     mediaRecorder.onstop = () => {
       recStream.getTracks().forEach(t => t.stop());
+      const dur = Math.max(1, Math.round((Date.now() - recStartTime) / 1000));
       const blob = new Blob(audioChunks, { type: mediaRecorder.mimeType || 'audio/webm' });
+      addVoiceMsg(dur);
       const fd = new FormData();
       fd.append('audio', blob, 'answer.webm');
-      postAnswer(fd, '（语音回答）');
+      submit(fd);
     };
     mediaRecorder.start();
-    btn.textContent = '⏹ 停止';
+    recStartTime = Date.now();
+
+    // 显示录音动效
+    document.getElementById('recIndicator').style.display = 'flex';
+    btn.classList.add('recording');
+    btn.textContent = '⏹';
+    document.getElementById('msgInput').disabled = true;
+    document.getElementById('sendBtn').disabled = true;
+    document.getElementById('recTime').textContent = '0″';
+    recTimer = setInterval(() => {
+      const s = Math.round((Date.now() - recStartTime) / 1000);
+      document.getElementById('recTime').textContent = s + '″';
+    }, 300);
   } catch (e) {
     addMsg('系统', '无法录音：' + e.message);
   }
+}
+
+function stopRec() {
+  if (recTimer) { clearInterval(recTimer); recTimer = null; }
+  mediaRecorder.stop();
+  document.getElementById('recIndicator').style.display = 'none';
+  const btn = document.getElementById('recBtn');
+  btn.classList.remove('recording');
+  btn.textContent = '🎤';
+  document.getElementById('msgInput').disabled = false;
+  document.getElementById('sendBtn').disabled = false;
 }
 
 async function showReport() {
