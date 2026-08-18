@@ -14,6 +14,63 @@
 - **CLI + Web 双入口**：命令行交互 + 浏览器在线测评（FastAPI + 简单前端）。
 - **数据持久化 + 管理面板**：SQLite 自动落库，`/admin` 查看候选人列表、分数与报告。
 
+## 系统架构
+
+```mermaid
+flowchart TB
+    subgraph L1["接入层"]
+        CLI["CLI · main.py"]
+        WEB["Web · web.py + 前端 + /admin"]
+    end
+    subgraph L2["编排层"]
+        ENG["InterviewEngine 面试状态机"]
+    end
+    subgraph L3["智能体层"]
+        IV["面试官"] --> AN["维度分析师 ×5"] --> AR["裁决"] --> RP["报告"]
+    end
+    subgraph L4["多模态层"]
+        ASR["ASR 转写 · DashScope"]
+        EMO["情绪识别 · emotion2vec"]
+    end
+    subgraph L5["能力层"]
+        LLM["LLM · DeepSeek（OpenAI 兼容）"]
+    end
+    subgraph L6["数据层"]
+        DB["SQLite 结果库"]
+        AUD["音频落盘"]
+    end
+
+    CLI --> ENG
+    WEB --> ENG
+    WEB --> ASR
+    WEB --> EMO
+    ENG --> IV
+    IV --> LLM
+    AN --> LLM
+    AR --> LLM
+    ENG --> DB
+    WEB --> AUD
+```
+
+## 核心流程
+
+```mermaid
+flowchart LR
+    A["候选人 录音/打字"] --> B["上传后端"]
+    B --> C{"是音频?"}
+    C -->|是| D["ASR 转文字"]
+    C -->|否| E["文字"]
+    D --> F["情绪识别 emotion2vec"]
+    F --> G["engine.send(文字, 情绪信号)"]
+    E --> G
+    G --> H["面试官 追问 / 下一维度"]
+    H --> I["维度分析师 ×5"]
+    I --> J["裁决 综合分 + 结论"]
+    J --> K["报告"]
+    K --> L["SQLite 落库"]
+    K --> M["管理员面板 /admin"]
+```
+
 ## 界面预览
 
 **面试界面（候选人端）**
