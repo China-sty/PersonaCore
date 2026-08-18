@@ -81,6 +81,10 @@ flowchart LR
 
 ![管理面板](docs/images/admin-panel.jpg)
 
+**管理面板 · 候选人评分雷达图**
+
+![候选人评分雷达图](docs/images/admin-detail.jpg)
+
 ## 快速开始
 
 ### 1. 安装依赖
